@@ -1,0 +1,59 @@
+#include <zephyr/dt-bindings/gpio/gpio.h>
+#include <zephyr/dt-bindings/mipi_dbi/mipi_dbi.h>
+
+/*
+ * Wiring group B (ST7789, 7-pin):
+ * SCL/SCK -> GPIO18 (shared SPI2 SCK)
+ * SDA/MOSI -> GPIO23 (shared SPI2 MOSI)
+ * CS -> GPIO15
+ * DC -> GPIO27
+ * RST -> GPIO26
+ */
+
+/ {
+    chosen {
+        zephyr,display = &st7789;
+    };
+
+    mipi_dbi_st7789 {
+        compatible = "zephyr,mipi-dbi-spi";
+        spi-dev = <&spi2>;
+        dc-gpios = <&gpio0 27 GPIO_ACTIVE_HIGH>;
+        reset-gpios = <&gpio0 26 GPIO_ACTIVE_LOW>;
+        write-only;
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        st7789: st7789v@0 {
+            compatible = "sitronix,st7789v";
+            reg = <0>;
+            mipi-max-frequency = <26000000>;
+            mipi-mode = "MIPI_DBI_MODE_SPI_4WIRE";
+
+            width = <240>;
+            height = <320>;
+            x-offset = <0>;
+            y-offset = <0>;
+            vcom = <0x20>;
+            gctrl = <0x56>;
+            vrhs = <0x1f>;
+            vdvs = <0x20>;
+            mdac = <0x00>;
+            gamma = <0x01>;
+            colmod = <0x55>;
+            lcm = <0x2c>;
+            porch-param = [0c 0c 00 33 33];
+            cmd2en-param = [5a 69 02 00];
+            pwctrl1-param = [a6 a1];
+            pvgam-param = [d0 0d 14 0b 0b 07 3a 44 50 08 13 13 2d 32];
+            nvgam-param = [d0 0d 14 0b 0b 07 3a 44 50 08 13 13 2d 32];
+            ram-param = [00 e0];
+            rgb-param = [40 02 14];
+        };
+    };
+};
+
+&spi2 {
+    status = "okay";
+    cs-gpios = <&gpio0 15 GPIO_ACTIVE_LOW>;
+};
