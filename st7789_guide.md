@@ -198,3 +198,87 @@ ST7789 面板层：
 
 - 先统一参数版本（尤其 565/666 策略）。
 - 走标准 SPI + display 驱动路线，而不是继续 bit-bang。
+
+## 12. 当前仓库稳定配置（2026-08）
+
+### 12.0 应用开关位置说明（已从 Kconfig 迁移）
+
+- 应用入口选择和 app 层 LVGL 开关，不再通过 `CONFIG_APP_*` 控制。
+- 统一改为 CMake 参数：
+	- `APP_DEMO_ENTRY=st7735s|st7789|st7789_lvgl_debug`
+	- `APP_USE_LVGL_DEMO=ON|OFF`
+- `CONFIG_LVGL` 及其内存相关项仍保留在 `prj_lvgl.conf`。
+
+当前实测稳定方案采用 non-LVGL 路径，并固定 RGB565：
+
+- 上电先全白清屏
+- 1.jpeg 与 2.jpeg 轮播（默认 2 秒切换）
+- 黑色中英文字幕上下跑动
+
+对应可调参数已改为代码显式常量（便于直接读代码定位）：
+
+- src/lcd_st7789.c: ST7789_SWITCH_PERIOD_MS
+- src/lcd_st7789.c: ST7789_SUBTITLE_FRAME_MS
+- src/lcd_st7789.c: ST7789_SUBTITLE_STEP_PX
+- src/lcd_st7789.c: ST7789_STARTUP_WHITE_MS
+
+### 12.1 构建与烧录 ST7789 稳定版
+
+```bash
+/Users/qinshen/go/zephyrproject/.venv/bin/west build -p always -b esp32_devkitc/esp32/procpu . -- -DDTC_OVERLAY_FILE=boards/esp32_devkitc_esp32_procpu_st7789.overlay -DEXTRA_CONF_FILE=prj_st7789.conf -DAPP_DEMO_ENTRY=st7789 -DAPP_USE_LVGL_DEMO=OFF
+/Users/qinshen/go/zephyrproject/.venv/bin/west flash --esp-device /dev/cu.usbserial-A5069RR4
+/Users/qinshen/go/zephyrproject/.venv/bin/west espressif monitor -p /dev/cu.usbserial-A5069RR4 -b 115200
+```
+
+说明：`west espressif monitor` 使用 `-p` 指定串口，`--esp-device` 用于 `west flash`。
+
+### 12.2 固化验收点
+
+- 上电先全白清屏，再进入两图轮播。
+- 图片切换周期约 2 秒，黑字中英文字幕上下运动平滑。
+- 连续断电重启后，显示方向、色彩和字幕行为一致。
+
+### 12.3 LVGL 调试路径（详细）
+
+构建命令：
+
+```bash
+/Users/qinshen/go/zephyrproject/.venv/bin/west build -p always -b esp32_devkitc/esp32/procpu . -- -DDTC_OVERLAY_FILE=boards/esp32_devkitc_esp32_procpu_st7789.overlay -DEXTRA_CONF_FILE="prj_st7789.conf;prj_lvgl.conf" -DAPP_DEMO_ENTRY=st7789_lvgl_debug -DAPP_USE_LVGL_DEMO=ON
+```
+
+代码入口：
+
+- `src/main_st7789_lgvl.c` 负责选择 LVGL debug 入口。
+- `src/lcd_demo_common.c` 中 `run_lvgl_demo()` 负责构建 UI 与运行循环。
+
+API 调用顺序与职责：
+
+1. `DEVICE_DT_GET(DT_CHOSEN(zephyr_display))` 获取显示设备。
+2. `display_get_capabilities()` 获取分辨率用于后续布局。
+3. `display_set_pixel_format(PIXEL_FORMAT_RGB_565)` 固定像素格式。
+4. `display_blanking_off()` 打开面板输出。
+5. `lv_display_get_default()` 校验 LVGL display 绑定。
+6. `lv_scr_act()` 获取当前屏幕对象。
+7. `lv_label_create()` 创建标题与计数 label。
+8. `lv_obj_create()` 创建心跳指示点。
+9. `lv_timer_create()` 建立 500ms 周期任务。
+10. `lv_timer_handler()` 在循环中持续驱动 LVGL。
+
+定时回调处理：
+
+- `lv_timer_get_user_data()` 取回上下文，避免直接访问不透明结构体。
+- `lv_label_set_text_fmt()` 动态更新计数文本。
+- `lv_obj_set_style_bg_color()` 闪烁心跳点，便于确认 UI 在真实刷新。
+
+错误返回策略：
+
+- display 或 LVGL screen 不可用返回 `-ENODEV`。
+- LVGL timer 创建失败返回 `-ENOMEM`。
+- 显示 API 错误原样返回并记录日志。
+
+### 12.4 ST7789 overlay 注意点
+
+- `chosen { zephyr,display = &st7789; }` 必须与面板节点一致。
+- `colmod=<0x55>` 对应 RGB565 路径，需与应用像素写入一致。
+- `mdac`、gamma、porch、ram-param 建议成套维护，不要跨参数表拼接。
+- 变更 overlay 后使用 `west build -p always` 强制重新生成 DT。

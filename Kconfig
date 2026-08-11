@@ -1,15 +1,3 @@
 mainmenu "SPI display validation options"
 
 source "Kconfig.zephyr"
-
-menu "Application options"
-
-config APP_ST7735S_DEMO
-    bool "Enable ST7735S display demo entry"
-    default y
-
-config APP_ST7789_DEMO
-    bool "Enable ST7789 display demo entry"
-    default n
-
-endmenu

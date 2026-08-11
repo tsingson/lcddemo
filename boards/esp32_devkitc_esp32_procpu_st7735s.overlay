@@ -36,6 +36,7 @@
             x-offset = <2>;
             y-offset = <1>;
 
+            /* Keep inversion disabled; enabling it causes a negative-color image on this panel. */
             madctl = <0x00>;
             colmod = <0x05>;
             vmctr1 = <0x1a>;
@@ -52,7 +53,6 @@
             raset = [00 00 00 9f];
             gamctrp1 = [04 22 07 0a 2e 30 25 2a 28 26 2e 3a 00 01 03 13];
             gamctrn1 = [04 16 06 0d 2d 26 23 27 27 25 2d 3b 00 01 04 13];
-            inversion-on;
         };
     };
 };

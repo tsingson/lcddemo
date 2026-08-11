@@ -194,3 +194,40 @@ ST7735S 面板层：
 
 - 用标准 SPI 设备模型替代 bit-bang。
 - 把方向与偏移参数化（DTS/Kconfig），避免写死。
+
+## 12. 当前仓库快速测试（2026-08）
+
+### 12.0 应用开关位置说明（已从 Kconfig 迁移）
+
+- 应用入口选择和 app 层 LVGL 开关，不再通过 `CONFIG_APP_*` 控制。
+- 统一改为 CMake 参数：
+	- `APP_DEMO_ENTRY=st7735s|st7789|st7789_lvgl_debug`
+	- `APP_USE_LVGL_DEMO=ON|OFF`
+- `CONFIG_LVGL` 等 Zephyr 子系统配置仍在 `prj*.conf` 中维护。
+
+### 12.1 构建与烧录 ST7735S
+
+```bash
+/Users/qinshen/go/zephyrproject/.venv/bin/west build -p always -b esp32_devkitc/esp32/procpu . -- -DDTC_OVERLAY_FILE=boards/esp32_devkitc_esp32_procpu_st7735s.overlay -DAPP_DEMO_ENTRY=st7735s -DAPP_USE_LVGL_DEMO=OFF
+/Users/qinshen/go/zephyrproject/.venv/bin/west flash --esp-device /dev/cu.usbserial-A5069RR4
+/Users/qinshen/go/zephyrproject/.venv/bin/west espressif monitor -p /dev/cu.usbserial-A5069RR4 -b 115200
+```
+
+### 12.2 最小验收点
+
+- 上电后能稳定进入 demo，无随机彩点
+- 字体与色条显示正常
+- 断电重上电后现象一致
+
+### 12.3 色彩固化结论（当前实测）
+
+- ST7735S 使用 `boards/esp32_devkitc_esp32_procpu_st7735s.overlay` 时，不启用 `inversion-on`。
+- 若出现“负片色彩但图文与动画正常”，优先排查是否误开启了 `inversion-on`。
+- 若仍有偏色（例如红蓝交换），再在 overlay 中仅调整 `madctl` 的 RGB/BGR 位做 A/B 验证。
+
+### 12.4 ST7735S overlay 注意点
+
+- `chosen { zephyr,display = &st7735s; }` 必须与面板节点一致。
+- `width/height/x-offset/y-offset` 与当前 128x160 玻璃偏移强相关，不建议随意改。
+- `colmod=<0x05>` 对应 RGB565 两字节像素链路。
+- 变更 overlay 后建议 `west build -p always`，避免使用旧的 DT 产物。
