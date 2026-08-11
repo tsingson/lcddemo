@@ -3,11 +3,11 @@
 
 /*
  * Wiring group B (ST7789, 7-pin):
- * SCL/SCK -> GPIO18 (shared SPI2 SCK)
- * SDA/MOSI -> GPIO23 (shared SPI2 MOSI)
- * CS -> GPIO15
- * DC -> GPIO27
- * RST -> GPIO26
+ * SCL/SCK -> GPIO18 (SPI3 SCK, same as ST7735S)
+ * SDA/MOSI -> GPIO23 (SPI3 MOSI, same as ST7735S)
+ * CS -> GPIO5 (same as ST7735S)
+ * DC -> GPIO21 (same as ST7735S)
+ * RST -> GPIO22 (same as ST7735S)
  */
 
 / {
@@ -17,9 +17,9 @@
 
     mipi_dbi_st7789 {
         compatible = "zephyr,mipi-dbi-spi";
-        spi-dev = <&spi2>;
-        dc-gpios = <&gpio0 27 GPIO_ACTIVE_HIGH>;
-        reset-gpios = <&gpio0 26 GPIO_ACTIVE_LOW>;
+        spi-dev = <&spi3>;
+        dc-gpios = <&gpio0 21 GPIO_ACTIVE_HIGH>;
+        reset-gpios = <&gpio0 22 GPIO_ACTIVE_LOW>;
         write-only;
         #address-cells = <1>;
         #size-cells = <0>;
@@ -53,7 +53,7 @@
     };
 };
 
-&spi2 {
+&spi3 {
     status = "okay";
-    cs-gpios = <&gpio0 15 GPIO_ACTIVE_LOW>;
+    cs-gpios = <&gpio0 5 GPIO_ACTIVE_LOW>;
 };

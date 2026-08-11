@@ -16,6 +16,14 @@
 - 这套 7 针定义里没有独立 BLK 背光脚。
 - 如果你的实际硬件板额外引出了背光控制脚，再在 Zephyr DTS 中增加 bl-gpios。
 
+当前工程默认接线（与 ST7735S 尽量一致）：
+
+- SCL -> GPIO18（SPI3 SCK）
+- SDA -> GPIO23（SPI3 MOSI）
+- CS -> GPIO5
+- DC -> GPIO21
+- RST -> GPIO22
+
 ## 1. 目标与资料结论
 这份指南对应你当前 2.0 寸 TFT 资料，面向 Zephyr 4.4.1 的驱动落地。
 
@@ -148,6 +156,42 @@
 - 花屏：0x3A 和像素字节数不匹配。
 - 上下裁切：2B 起始/结束地址或 y_offset 不匹配。
 - 颜色反转：0x21/0x20 与 MADCTL 组合不匹配。
+
+## 11. 当前工程中的 ST7789 驱动拆分
+为了提升复用性，工程采用“公共层 + 面板配置层”结构。
+
+公共层：
+
+- src/lcd_demo_common.h
+- src/lcd_demo_common.c
+
+该层统一提供：
+
+- UTF-8 解码
+- zpix12 字库查找与绘制
+- 彩条与计数刷新主循环
+- 分块 display_write 刷新策略
+
+ST7789 面板层：
+
+- src/lcd_st7789.h
+- src/lcd_st7789.c
+
+接口说明：
+
+- int lcd_st7789_demo_run(void)
+
+职责边界：
+
+- src/main_st7789.c 只保留入口分发。
+- src/lcd_st7789.c 仅维护 ST7789 profile（面板名、副标题、计数颜色、分块行数），并调用公共层入口。
+- src/zpix12_font_data.c/.h 作为通用字库数据源，由 src/lcd_demo_common.c 统一调用。
+
+复用建议：
+
+- 新应用需要快速点屏时，可直接调用 lcd_st7789_demo_run。
+- 若需要更强可组合性，优先在 src/lcd_demo_common.c 扩展通用接口，再由各面板 profile 复用。
+- 不同屏幕供应商参数切换时，优先保持入口文件不变，只在 lcd_st7789.c 内部策略与参数处调整。
 
 ---
 在 Zephyr 4.4.1 上，这块 2.0 寸 ST7789 的成功关键是：

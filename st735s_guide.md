@@ -153,6 +153,42 @@
 - 偏色：查 RGB/BGR 位与 MADCTL。
 - 画面裁切：查 x/y offset 与窗口边界。
 
+## 11. 当前工程中的 ST7735S 驱动拆分
+为了后续复用，工程已将显示逻辑抽成“公共层 + 面板配置层”两级结构。
+
+公共层：
+
+- src/lcd_demo_common.h
+- src/lcd_demo_common.c
+
+该层统一提供：
+
+- UTF-8 解码
+- zpix12 字库查找与绘制
+- 彩条与计数刷新主循环
+- 分块 display_write 刷新策略
+
+ST7735S 面板层：
+
+- src/lcd_st7735s.h
+- src/lcd_st7735s.c
+
+接口说明：
+
+- int lcd_st7735s_demo_run(void)
+
+职责边界：
+
+- src/main_st7735s.c 仅作为入口分发，不再承载具体渲染逻辑。
+- src/lcd_st7735s.c 仅维护 ST7735S profile（面板名、副标题、计数颜色、分块行数），并调用公共层入口。
+- src/zpix12_font_data.c/.h 提供 12x12 字形表，由 src/lcd_demo_common.c 统一使用。
+
+复用建议：
+
+- 若你后续要在其他应用页面里复用 ST7735S 初始化和刷屏能力，直接链接 lcd_st7735s.c 并调用 lcd_st7735s_demo_run。
+- 若要扩展为业务 UI，优先在 src/lcd_demo_common.c 扩展通用绘制能力，避免在单面板文件重复实现。
+- 若仅切换面板参数（如偏移、颜色顺序、刷新分块大小），优先在模块内部常量或配置项调整，避免改动主入口。
+
 ---
 这块 1.8 寸屏在 Zephyr 4.4.1 上的关键是两件事：
 

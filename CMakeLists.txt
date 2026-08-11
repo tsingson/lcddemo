@@ -7,6 +7,11 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
 
 target_sources(app PRIVATE
+    src/image_1_240x320_rgb565.c
+    src/lcd_demo_common.c
+    src/lcd_st7735s.c
+    src/lcd_st7789.c
     src/main_st7735s.c
     src/main_st7789.c
+    src/zpix12_font_data.c
 )

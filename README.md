@@ -5,8 +5,8 @@
 - Board: esp32_devkitc_esp32_procpu
 - west path: /Users/qinshen/go/zephyrproject/.venv/bin/west
 
-## Pin Assignment (Two Non-Conflicting Groups)
-Both displays share SPI2 clock/data lines, but each display uses its own CS/DC/RST control pins, so wiring groups do not conflict.
+## Pin Assignment
+ST7735S and ST7789 can now share the same ESP32 SPI/control pins to minimize rewiring.
 
 ### Group A: ST7735S (8-pin)
 - GND -> GND
@@ -26,11 +26,11 @@ Overlay file:
 ### Group B: ST7789 (7-pin)
 - GND -> GND
 - VCC -> 3V3
-- SCL -> GPIO18 (SPI2 SCK)
-- SDA -> GPIO23 (SPI2 MOSI)
-- RST -> GPIO26
-- DC -> GPIO27
-- CS -> GPIO15
+- SCL -> GPIO18 (SPI3 SCK, same as ST7735S)
+- SDA -> GPIO23 (SPI3 MOSI, same as ST7735S)
+- RST -> GPIO22 (same as ST7735S)
+- DC -> GPIO21 (same as ST7735S)
+- CS -> GPIO5 (same as ST7735S)
 
 Overlay file:
 - boards/esp32_devkitc_esp32_procpu_st7789.overlay
@@ -51,5 +51,18 @@ From this directory:
 ## Source Entrypoints
 - src/main_st7735s.c
 - src/main_st7789.c
+
+## Reusable Display Modules
+- src/lcd_demo_common.h / src/lcd_demo_common.c
+	- API: int lcd_demo_common_run(const struct lcd_demo_profile *profile)
+	- Responsibility: shared UTF-8/font rendering, color bars, counter update, display write pipeline
+- src/lcd_st7735s.h / src/lcd_st7735s.c
+	- API: int lcd_st7735s_demo_run(void)
+	- Responsibility: ST7735S profile wrapper (panel name/subtitle/color/fill rows) and dispatch to common pipeline
+- src/lcd_st7789.h / src/lcd_st7789.c
+	- API: int lcd_st7789_demo_run(void)
+	- Responsibility: ST7789 profile wrapper (panel name/subtitle/color/fill rows) and dispatch to common pipeline
+
+Main files now only dispatch to reusable modules, making later feature reuse easier.
 
 Only one demo entry should be enabled at a time by Kconfig.
