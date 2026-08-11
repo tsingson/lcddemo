@@ -3,8 +3,8 @@
 
 /*
  * Wiring group A (ST7735S, 8-pin):
- * SCL/SCK -> GPIO18 (shared SPI2 SCK)
- * SDA/MOSI -> GPIO23 (shared SPI2 MOSI)
+ * SCL/SCK -> GPIO18 (SPI3 SCK)
+ * SDA/MOSI -> GPIO23 (SPI3 MOSI)
  * CS -> GPIO5
  * DC -> GPIO21
  * RES -> GPIO22
@@ -18,7 +18,7 @@
 
     mipi_dbi_st7735s {
         compatible = "zephyr,mipi-dbi-spi";
-        spi-dev = <&spi2>;
+        spi-dev = <&spi3>;
         dc-gpios = <&gpio0 21 GPIO_ACTIVE_HIGH>;
         reset-gpios = <&gpio0 22 GPIO_ACTIVE_LOW>;
         write-only;
@@ -57,7 +57,7 @@
     };
 };
 
-&spi2 {
+&spi3 {
     status = "okay";
     cs-gpios = <&gpio0 5 GPIO_ACTIVE_LOW>;
 };

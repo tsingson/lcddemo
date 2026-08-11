@@ -11,12 +11,14 @@ Both displays share SPI2 clock/data lines, but each display uses its own CS/DC/R
 ### Group A: ST7735S (8-pin)
 - GND -> GND
 - VCC -> 3V3
-- SCL -> GPIO18 (SPI2 SCK)
-- SDA -> GPIO23 (SPI2 MOSI)
+- SCL -> GPIO18 (SPI3 SCK)
+- SDA -> GPIO23 (SPI3 MOSI)
 - RES -> GPIO22
 - DC -> GPIO21
 - CS -> GPIO5
 - BLK -> GPIO4 (optional backlight control)
+
+Note: On esp32_devkitc/esp32/procpu, SPI3 defaults are GPIO18/GPIO23/GPIO5.
 
 Overlay file:
 - boards/esp32_devkitc_esp32_procpu_st7735s.overlay
