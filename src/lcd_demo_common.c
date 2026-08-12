@@ -304,12 +304,19 @@ static int fill_rect(const struct device *display,
 static int draw_glyph(const struct device *display,
                       uint32_t x,
                       uint32_t y,
+                      uint32_t draw_w,
                       uint16_t fg,
                       uint16_t bg,
                       const zpix12_glyph_t *glyph)
 {
-    const uint32_t glyph_w = render_glyph_w;
+    const uint32_t glyph_full_w = render_glyph_w;
     const uint32_t glyph_h = render_glyph_h;
+    const uint32_t glyph_w = MIN(draw_w, glyph_full_w);
+
+    if (glyph_w == 0U) {
+        return 0;
+    }
+
     struct display_buffer_descriptor desc = {
         .buf_size = glyph_w * glyph_h * sizeof(uint16_t),
         .width = glyph_w,
@@ -325,7 +332,7 @@ static int draw_glyph(const struct device *display,
         const uint16_t bits = glyph->rows[src_row];
 
         for (uint32_t col = 0U; col < glyph_w; ++col) {
-            const uint32_t src_col = (col * ZPIX_GLYPH_W) / glyph_w;
+            const uint32_t src_col = (col * ZPIX_GLYPH_W) / glyph_full_w;
             const uint16_t mask = (uint16_t)(1U << (11U - src_col));
             glyphbuf[row * glyph_w + col] = ((bits & mask) != 0U) ? fg_be : bg_be;
         }
@@ -348,12 +355,19 @@ static uint16_t image_pixel_be(const uint8_t *image_data,
 static int draw_glyph_image_bg(const struct device *display,
                                uint32_t x,
                                uint32_t y,
+                               uint32_t draw_w,
                                uint16_t fg,
                                const zpix12_glyph_t *glyph,
                                const struct image_region *image)
 {
-    const uint32_t glyph_w = render_glyph_w;
+    const uint32_t glyph_full_w = render_glyph_w;
     const uint32_t glyph_h = render_glyph_h;
+    const uint32_t glyph_w = MIN(draw_w, glyph_full_w);
+
+    if (glyph_w == 0U) {
+        return 0;
+    }
+
     struct display_buffer_descriptor desc = {
         .buf_size = glyph_w * glyph_h * sizeof(uint16_t),
         .width = glyph_w,
@@ -369,7 +383,7 @@ static int draw_glyph_image_bg(const struct device *display,
         const uint16_t bits = glyph->rows[src_row];
 
         for (uint32_t col = 0U; col < glyph_w; ++col) {
-            const uint32_t src_col = (col * ZPIX_GLYPH_W) / glyph_w;
+            const uint32_t src_col = (col * ZPIX_GLYPH_W) / glyph_full_w;
             const uint16_t mask = (uint16_t)(1U << (11U - src_col));
             if ((bits & mask) != 0U) {
                 glyphbuf[row * glyph_w + col] = fg_be;
@@ -406,7 +420,6 @@ static int draw_text_utf8_wrapped(const struct device *display,
                                   uint32_t line_spacing,
                                   uint32_t *next_line_y)
 {
-    const uint32_t glyph_w = render_glyph_w;
     const uint32_t glyph_h = render_glyph_h;
     const char *p = text;
     const uint32_t line_advance = glyph_h + line_spacing;
@@ -445,7 +458,7 @@ static int draw_text_utf8_wrapped(const struct device *display,
 
         const uint32_t advance_px = glyph_advance_px(codepoint, glyph);
 
-        if (cursor_x + glyph_w > x_end) {
+        if (cursor_x + advance_px > x_end) {
             cursor_x = x;
             cursor_y += line_advance;
             if (cursor_y + glyph_h > y_end) {
@@ -453,9 +466,11 @@ static int draw_text_utf8_wrapped(const struct device *display,
             }
         }
 
-        const int ret = draw_glyph(display, cursor_x, cursor_y, fg, bg, glyph);
-        if (ret != 0) {
-            return ret;
+        if (codepoint != ' ') {
+            const int ret = draw_glyph(display, cursor_x, cursor_y, advance_px, fg, bg, glyph);
+            if (ret != 0) {
+                return ret;
+            }
         }
 
         cursor_x += advance_px;
@@ -483,7 +498,6 @@ static int draw_text_utf8_wrapped_image_bg(const struct device *display,
                                            const struct image_region *image,
                                            uint32_t *next_line_y)
 {
-    const uint32_t glyph_w = render_glyph_w;
     const uint32_t glyph_h = render_glyph_h;
     const char *p = text;
     const uint32_t line_advance = glyph_h + line_spacing;
@@ -522,7 +536,7 @@ static int draw_text_utf8_wrapped_image_bg(const struct device *display,
 
         const uint32_t advance_px = glyph_advance_px(codepoint, glyph);
 
-        if (cursor_x + glyph_w > x_end) {
+        if (cursor_x + advance_px > x_end) {
             cursor_x = x;
             cursor_y += line_advance;
             if (cursor_y + glyph_h > y_end) {
@@ -530,9 +544,11 @@ static int draw_text_utf8_wrapped_image_bg(const struct device *display,
             }
         }
 
-        const int ret = draw_glyph_image_bg(display, cursor_x, cursor_y, fg, glyph, image);
-        if (ret != 0) {
-            return ret;
+        if (codepoint != ' ') {
+            const int ret = draw_glyph_image_bg(display, cursor_x, cursor_y, advance_px, fg, glyph, image);
+            if (ret != 0) {
+                return ret;
+            }
         }
 
         cursor_x += advance_px;
@@ -762,7 +778,8 @@ int lcd_demo_common_run(const struct lcd_demo_profile *profile)
             const uint32_t text_margin_x = 2U;
             const uint32_t text_w = (width > text_margin_x * 2U) ? (width - text_margin_x * 2U) : width;
             const uint32_t line_advance = glyph_h + line_spacing;
-            const uint32_t subtitle_h = (line_advance * 2U) + glyph_h;
+            const uint32_t subtitle_lines = (width <= 160U) ? 5U : 3U;
+            const uint32_t subtitle_h = (line_advance * (subtitle_lines - 1U)) + glyph_h;
             const uint32_t counter_area_y = 4U;
             const uint32_t counter_area_h = line_advance * 2U;
             const uint32_t frame_ms = (profile->subtitle_frame_ms == 0U) ? 80U : profile->subtitle_frame_ms;
