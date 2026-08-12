@@ -28,7 +28,7 @@
         st7735s: st7735r@0 {
             compatible = "sitronix,st7735r";
             reg = <0>;
-            mipi-max-frequency = <20000000>;
+            mipi-max-frequency = <8000000>;
             mipi-mode = "MIPI_DBI_MODE_SPI_4WIRE";
 
             width = <128>;
@@ -49,8 +49,8 @@
             frmctr1 = [05 3c 3c];
             frmctr2 = [05 3c 3c];
             frmctr3 = [05 3c 3c 05 3c 3c];
-            caset = [00 00 00 7f];
-            raset = [00 00 00 9f];
+            caset = [00 02 00 81];
+            raset = [00 01 00 a0];
             gamctrp1 = [04 22 07 0a 2e 30 25 2a 28 26 2e 3a 00 01 03 13];
             gamctrn1 = [04 16 06 0d 2d 26 23 27 27 25 2d 3b 00 01 04 13];
         };

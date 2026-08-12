@@ -66,3 +66,8 @@ build/
 ./.idea/
 
 *.exe
+/build_st7735s_lvgl
+/build_st7735s_lvgl_entry
+/build_st7735s_lvgl_simple
+/build_st7735s_lvgl_verify
+/build_st7735s_stable_verify

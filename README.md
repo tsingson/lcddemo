@@ -5,17 +5,31 @@
 - Board: esp32_devkitc_esp32_procpu
 - west path: /Users/qinshen/go/zephyrproject/.venv/bin/west
 
+## Mode Quick Reference
+
+| Goal | APP_DEMO_ENTRY | LVGL | Overlay (auto) | Extra conf (auto) |
+|---|---|---|---|---|
+| ST7735S image switch + running subtitle (color re-check) | st7735s | OFF | st7735s | none |
+| ST7735S strict LVGL verify | st7735s_lvgl | ON (forced) | st7735s | prj_st7735s_lvgl.conf |
+| ST7789 stable slideshow | st7789 | OFF | st7789 | prj_st7789.conf |
+| ST7789 LVGL debug | st7789_lvgl_debug | ON | st7789 | prj_st7789.conf + prj_lvgl.conf |
+
+Note: `st7735s_lvgl` is strict LVGL mode. If LVGL init fails, app returns error instead of falling back.
+
 ## End-Of-Day Quick Commands
 
 ```bash
-# 1) Build ST7735S stable
-/Users/qinshen/go/zephyrproject/.venv/bin/west build -p always -b esp32_devkitc/esp32/procpu . -- -DDTC_OVERLAY_FILE=boards/esp32_devkitc_esp32_procpu_st7735s.overlay -DAPP_DEMO_ENTRY=st7735s -DAPP_USE_LVGL_DEMO=OFF
+# 1) Build ST7735S stable (image switch + running subtitle)
+/Users/qinshen/go/zephyrproject/.venv/bin/west build -p always -b esp32_devkitc/esp32/procpu . -- -DAPP_DEMO_ENTRY=st7735s
 
 # 2) Flash
 /Users/qinshen/go/zephyrproject/.venv/bin/west flash --esp-device /dev/cu.usbserial-A5069RR4
 
 # 3) Monitor
 /Users/qinshen/go/zephyrproject/.venv/bin/west espressif monitor -p /dev/cu.usbserial-A5069RR4 -b 115200
+
+# 3b) Build ST7735S strict LVGL
+/Users/qinshen/go/zephyrproject/.venv/bin/west build -p always -d build_st7735s_lvgl_entry -b esp32_devkitc/esp32/procpu . -- -DAPP_DEMO_ENTRY=st7735s_lvgl
 
 # 4) Image -> C array
 mkdir -p tools/bin
@@ -58,18 +72,27 @@ From this directory:
 
 ### ST7735S demo
 ```bash
-/Users/qinshen/go/zephyrproject/.venv/bin/west build -p always -b esp32_devkitc/esp32/procpu . -- -DDTC_OVERLAY_FILE=boards/esp32_devkitc_esp32_procpu_st7735s.overlay -DAPP_DEMO_ENTRY=st7735s
+/Users/qinshen/go/zephyrproject/.venv/bin/west build -p always -b esp32_devkitc/esp32/procpu . -- -DAPP_DEMO_ENTRY=st7735s
 ```
+
+Use this mode to verify color correctness and subtitle running animation.
 
 ### ST7789 demo
 ```bash
-/Users/qinshen/go/zephyrproject/.venv/bin/west build -p always -b esp32_devkitc/esp32/procpu . -- -DDTC_OVERLAY_FILE=boards/esp32_devkitc_esp32_procpu_st7789.overlay -DEXTRA_CONF_FILE=prj_st7789.conf -DAPP_DEMO_ENTRY=st7789
+/Users/qinshen/go/zephyrproject/.venv/bin/west build -p always -b esp32_devkitc/esp32/procpu . -- -DAPP_DEMO_ENTRY=st7789
 ```
 
 ### ST7789 demo (LVGL path)
 ```bash
-/Users/qinshen/go/zephyrproject/.venv/bin/west build -p always -b esp32_devkitc/esp32/procpu . -- -DDTC_OVERLAY_FILE=boards/esp32_devkitc_esp32_procpu_st7789.overlay -DEXTRA_CONF_FILE="prj_st7789.conf;prj_lvgl.conf" -DAPP_DEMO_ENTRY=st7789_lvgl_debug -DAPP_USE_LVGL_DEMO=ON
+/Users/qinshen/go/zephyrproject/.venv/bin/west build -p always -b esp32_devkitc/esp32/procpu . -- -DAPP_DEMO_ENTRY=st7789_lvgl_debug -DAPP_USE_LVGL_DEMO=ON
 ```
+
+### ST7735S demo (LVGL path)
+```bash
+/Users/qinshen/go/zephyrproject/.venv/bin/west build -p always -b esp32_devkitc/esp32/procpu . -- -DAPP_DEMO_ENTRY=st7735s_lvgl
+```
+
+This is strict LVGL mode for ST7735S verification.
 
 ## Zephyr Build Matrix
 
@@ -83,13 +106,16 @@ Command matrix:
 
 ```bash
 # ST7735S stable demo
-/Users/qinshen/go/zephyrproject/.venv/bin/west build -p always -b esp32_devkitc/esp32/procpu . -- -DDTC_OVERLAY_FILE=boards/esp32_devkitc_esp32_procpu_st7735s.overlay -DAPP_DEMO_ENTRY=st7735s -DAPP_USE_LVGL_DEMO=OFF
+/Users/qinshen/go/zephyrproject/.venv/bin/west build -p always -b esp32_devkitc/esp32/procpu . -- -DAPP_DEMO_ENTRY=st7735s -DAPP_USE_LVGL_DEMO=OFF
 
 # ST7789 stable demo
-/Users/qinshen/go/zephyrproject/.venv/bin/west build -p always -b esp32_devkitc/esp32/procpu . -- -DDTC_OVERLAY_FILE=boards/esp32_devkitc_esp32_procpu_st7789.overlay -DEXTRA_CONF_FILE=prj_st7789.conf -DAPP_DEMO_ENTRY=st7789 -DAPP_USE_LVGL_DEMO=OFF
+/Users/qinshen/go/zephyrproject/.venv/bin/west build -p always -b esp32_devkitc/esp32/procpu . -- -DAPP_DEMO_ENTRY=st7789 -DAPP_USE_LVGL_DEMO=OFF
 
 # ST7789 LVGL debug demo
-/Users/qinshen/go/zephyrproject/.venv/bin/west build -p always -b esp32_devkitc/esp32/procpu . -- -DDTC_OVERLAY_FILE=boards/esp32_devkitc_esp32_procpu_st7789.overlay -DEXTRA_CONF_FILE="prj_st7789.conf;prj_lvgl.conf" -DAPP_DEMO_ENTRY=st7789_lvgl_debug -DAPP_USE_LVGL_DEMO=ON
+/Users/qinshen/go/zephyrproject/.venv/bin/west build -p always -b esp32_devkitc/esp32/procpu . -- -DAPP_DEMO_ENTRY=st7789_lvgl_debug -DAPP_USE_LVGL_DEMO=ON
+
+# ST7735S LVGL strict demo
+/Users/qinshen/go/zephyrproject/.venv/bin/west build -p always -b esp32_devkitc/esp32/procpu . -- -DAPP_DEMO_ENTRY=st7735s_lvgl
 ```
 
 Flash and monitor:
@@ -130,7 +156,7 @@ tools/bin/img_trans 2.jpeg src/image_2_240x320_rgb565.c 240 320 center src_image
 
 Application-level switches have been moved out of Kconfig and are now explicit CMake/code options:
 
-- `APP_DEMO_ENTRY`: `st7735s` | `st7789` | `st7789_lvgl_debug`
+- `APP_DEMO_ENTRY`: `st7735s` | `st7735s_lvgl` | `st7789` | `st7789_lvgl_debug`
 - `APP_USE_LVGL_DEMO`: `ON` | `OFF`
 
 Notes:
@@ -151,12 +177,12 @@ Note: `west espressif monitor` uses `-p` for serial port. `--esp-device` is for 
 
 ### 1) Purpose and scope
 
-The LVGL path is used only for ST7789 runtime verification and debugging, isolated in `src/main_st7789_lgvl.c`.
+The LVGL path is available through the shared display pipeline and can be enabled for both ST7735S and ST7789 demo entries.
 
 ### 2) Build requirements
 
-- Enable Zephyr LVGL stack through `prj_lvgl.conf` (`CONFIG_LVGL=y` and related memory settings).
-- Select app entry by CMake: `-DAPP_DEMO_ENTRY=st7789_lvgl_debug`.
+- Enable Zephyr LVGL stack via auto-selected extra conf (ST7735S uses `prj_st7735s_lvgl.conf`; ST7789 uses `prj_lvgl.conf`).
+- Select app entry by CMake (for ST7735S strict LVGL use `-DAPP_DEMO_ENTRY=st7735s_lvgl`; for ST7789 debug use `-DAPP_DEMO_ENTRY=st7789_lvgl_debug`).
 - Enable app LVGL branch by CMake: `-DAPP_USE_LVGL_DEMO=ON`.
 
 ### 3) Runtime flow and API handling
@@ -263,6 +289,9 @@ Recommended stable build path (non-LVGL):
 
 ```bash
 /Users/qinshen/go/zephyrproject/.venv/bin/west build -p always -b esp32_devkitc/esp32/procpu . -- -DDTC_OVERLAY_FILE=boards/esp32_devkitc_esp32_procpu_st7789.overlay -DEXTRA_CONF_FILE=prj_st7789.conf -DAPP_DEMO_ENTRY=st7789 -DAPP_USE_LVGL_DEMO=OFF
+
+# Equivalent simplified form (recommended)
+/Users/qinshen/go/zephyrproject/.venv/bin/west build -p always -b esp32_devkitc/esp32/procpu . -- -DAPP_DEMO_ENTRY=st7789 -DAPP_USE_LVGL_DEMO=OFF
 ```
 
 Explicit in-code tunables for long-term stabilization:
