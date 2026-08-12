@@ -71,3 +71,6 @@ build/
 /build_st7735s_lvgl_simple
 /build_st7735s_lvgl_verify
 /build_st7735s_stable_verify
+/build_st7735s_lvgl_test
+/build_st7735s_no_lvgl
+/build_st7789_lvgl_debug
