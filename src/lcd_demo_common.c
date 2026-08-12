@@ -31,6 +31,11 @@ LOG_MODULE_REGISTER(lcd_demo_common, LOG_LEVEL_INF);
 #define DEFAULT_COUNTER_PERIOD_MS 400U
 #define DEFAULT_CHAR_SPACING 1U
 #define DEFAULT_LINE_SPACING 2U
+#define DEFAULT_GLYPH_SIZE_PX ZPIX_GLYPH_W
+#define MIN_GLYPH_SIZE_PX 8U
+
+static uint32_t render_glyph_w = ZPIX_GLYPH_W;
+static uint32_t render_glyph_h = ZPIX_GLYPH_H;
 
 static const char default_title_text[] =
     "\xE4\xB8\xAD\xE6\x96\x87\xE6\x98\xBE\xE7\xA4\xBA\xE6\xB5\x8B\xE8\xAF\x95 Display Demo";
@@ -91,6 +96,23 @@ static uint32_t profile_line_spacing(const struct lcd_demo_profile *profile)
     return MIN((uint32_t)profile->line_spacing, 16U);
 }
 
+static uint32_t profile_glyph_size_px(const struct lcd_demo_profile *profile)
+{
+    uint32_t glyph_px = (profile->glyph_size_px == 0U) ?
+                        DEFAULT_GLYPH_SIZE_PX :
+                        (uint32_t)profile->glyph_size_px;
+
+    if (glyph_px < MIN_GLYPH_SIZE_PX) {
+        glyph_px = MIN_GLYPH_SIZE_PX;
+    }
+
+    if (glyph_px > ZPIX_GLYPH_W) {
+        glyph_px = ZPIX_GLYPH_W;
+    }
+
+    return glyph_px;
+}
+
 static const char *profile_title_text(const struct lcd_demo_profile *profile)
 {
     return (profile->title != NULL) ? profile->title : default_title_text;
@@ -104,6 +126,55 @@ static const char *profile_subtitle_text(const struct lcd_demo_profile *profile)
 static const char *profile_counter_prefix_text(const struct lcd_demo_profile *profile)
 {
     return (profile->counter_prefix != NULL) ? profile->counter_prefix : default_counter_prefix;
+}
+
+static uint32_t glyph_advance_px(uint32_t codepoint, const zpix12_glyph_t *glyph)
+{
+    const uint32_t glyph_w = render_glyph_w;
+    const uint32_t glyph_h = render_glyph_h;
+
+    if (codepoint == ' ') {
+        return MAX(2U, glyph_w / 3U);
+    }
+
+    if (codepoint > 0x7FU || glyph == NULL) {
+        return glyph_w;
+    }
+
+    int32_t max_col = -1;
+
+    for (uint32_t col = 0U; col < glyph_w; ++col) {
+        const uint32_t src_col = (col * ZPIX_GLYPH_W) / glyph_w;
+        const uint16_t mask = (uint16_t)(1U << (11U - src_col));
+        bool col_has_ink = false;
+
+        for (uint32_t row = 0U; row < glyph_h; ++row) {
+            const uint32_t src_row = (row * ZPIX_GLYPH_H) / glyph_h;
+            if ((glyph->rows[src_row] & mask) != 0U) {
+                col_has_ink = true;
+                break;
+            }
+        }
+
+        if (col_has_ink) {
+            max_col = (int32_t)col;
+        }
+    }
+
+    if (max_col < 0) {
+        return MAX(2U, glyph_w / 3U);
+    }
+
+    uint32_t advance = MIN((uint32_t)max_col + 2U, glyph_w);
+
+    if ((codepoint >= 'a' && codepoint <= 'z') ||
+        (codepoint >= 'A' && codepoint <= 'Z')) {
+        advance = MAX(advance, glyph_w / 2U);
+    } else if (codepoint >= '0' && codepoint <= '9') {
+        advance = MAX(advance, (glyph_w * 3U) / 5U);
+    }
+
+    return advance;
 }
 
 /* Glyph table is sorted by codepoint, so binary search is predictable and fast. */
@@ -237,21 +308,26 @@ static int draw_glyph(const struct device *display,
                       uint16_t bg,
                       const zpix12_glyph_t *glyph)
 {
+    const uint32_t glyph_w = render_glyph_w;
+    const uint32_t glyph_h = render_glyph_h;
     struct display_buffer_descriptor desc = {
-        .buf_size = ZPIX_GLYPH_W * ZPIX_GLYPH_H * sizeof(uint16_t),
-        .width = ZPIX_GLYPH_W,
-        .height = ZPIX_GLYPH_H,
-        .pitch = ZPIX_GLYPH_W,
+        .buf_size = glyph_w * glyph_h * sizeof(uint16_t),
+        .width = glyph_w,
+        .height = glyph_h,
+        .pitch = glyph_w,
     };
     uint16_t glyphbuf[ZPIX_GLYPH_W * ZPIX_GLYPH_H];
     const uint16_t fg_be = sys_cpu_to_be16(fg);
     const uint16_t bg_be = sys_cpu_to_be16(bg);
 
-    for (uint32_t row = 0U; row < ZPIX_GLYPH_H; ++row) {
-        const uint16_t bits = glyph->rows[row];
-        for (uint32_t col = 0U; col < ZPIX_GLYPH_W; ++col) {
-            const uint16_t mask = (uint16_t)(1U << (11U - col));
-            glyphbuf[row * ZPIX_GLYPH_W + col] = ((bits & mask) != 0U) ? fg_be : bg_be;
+    for (uint32_t row = 0U; row < glyph_h; ++row) {
+        const uint32_t src_row = (row * ZPIX_GLYPH_H) / glyph_h;
+        const uint16_t bits = glyph->rows[src_row];
+
+        for (uint32_t col = 0U; col < glyph_w; ++col) {
+            const uint32_t src_col = (col * ZPIX_GLYPH_W) / glyph_w;
+            const uint16_t mask = (uint16_t)(1U << (11U - src_col));
+            glyphbuf[row * glyph_w + col] = ((bits & mask) != 0U) ? fg_be : bg_be;
         }
     }
 
@@ -276,22 +352,27 @@ static int draw_glyph_image_bg(const struct device *display,
                                const zpix12_glyph_t *glyph,
                                const struct image_region *image)
 {
+    const uint32_t glyph_w = render_glyph_w;
+    const uint32_t glyph_h = render_glyph_h;
     struct display_buffer_descriptor desc = {
-        .buf_size = ZPIX_GLYPH_W * ZPIX_GLYPH_H * sizeof(uint16_t),
-        .width = ZPIX_GLYPH_W,
-        .height = ZPIX_GLYPH_H,
-        .pitch = ZPIX_GLYPH_W,
+        .buf_size = glyph_w * glyph_h * sizeof(uint16_t),
+        .width = glyph_w,
+        .height = glyph_h,
+        .pitch = glyph_w,
     };
     uint16_t glyphbuf[ZPIX_GLYPH_W * ZPIX_GLYPH_H];
     const uint16_t fg_be = sys_cpu_to_be16(fg);
     const uint16_t black_be = sys_cpu_to_be16(0x0000);
 
-    for (uint32_t row = 0U; row < ZPIX_GLYPH_H; ++row) {
-        const uint16_t bits = glyph->rows[row];
-        for (uint32_t col = 0U; col < ZPIX_GLYPH_W; ++col) {
-            const uint16_t mask = (uint16_t)(1U << (11U - col));
+    for (uint32_t row = 0U; row < glyph_h; ++row) {
+        const uint32_t src_row = (row * ZPIX_GLYPH_H) / glyph_h;
+        const uint16_t bits = glyph->rows[src_row];
+
+        for (uint32_t col = 0U; col < glyph_w; ++col) {
+            const uint32_t src_col = (col * ZPIX_GLYPH_W) / glyph_w;
+            const uint16_t mask = (uint16_t)(1U << (11U - src_col));
             if ((bits & mask) != 0U) {
-                glyphbuf[row * ZPIX_GLYPH_W + col] = fg_be;
+                glyphbuf[row * glyph_w + col] = fg_be;
                 continue;
             }
 
@@ -300,12 +381,12 @@ static int draw_glyph_image_bg(const struct device *display,
             if (sx >= image->x && sy >= image->y &&
                 (sx - image->x) < image->width &&
                 (sy - image->y) < image->height) {
-                glyphbuf[row * ZPIX_GLYPH_W + col] = image_pixel_be(image->data,
-                                                                     image->width,
-                                                                     sx - image->x,
-                                                                     sy - image->y);
+                glyphbuf[row * glyph_w + col] = image_pixel_be(image->data,
+                                                                image->width,
+                                                                sx - image->x,
+                                                                sy - image->y);
             } else {
-                glyphbuf[row * ZPIX_GLYPH_W + col] = black_be;
+                glyphbuf[row * glyph_w + col] = black_be;
             }
         }
     }
@@ -325,14 +406,16 @@ static int draw_text_utf8_wrapped(const struct device *display,
                                   uint32_t line_spacing,
                                   uint32_t *next_line_y)
 {
+    const uint32_t glyph_w = render_glyph_w;
+    const uint32_t glyph_h = render_glyph_h;
     const char *p = text;
-    const uint32_t line_advance = ZPIX_GLYPH_H + line_spacing;
+    const uint32_t line_advance = glyph_h + line_spacing;
     const uint32_t x_end = x + max_width;
     const uint32_t y_end = y + max_height;
     uint32_t cursor_x = x;
     uint32_t cursor_y = y;
 
-    if (text == NULL || max_width == 0U || max_height < ZPIX_GLYPH_H) {
+    if (text == NULL || max_width == 0U || max_height < glyph_h) {
         return -EINVAL;
     }
 
@@ -346,7 +429,7 @@ static int draw_text_utf8_wrapped(const struct device *display,
         if (codepoint == '\n') {
             cursor_x = x;
             cursor_y += line_advance;
-            if (cursor_y + ZPIX_GLYPH_H > y_end) {
+            if (cursor_y + glyph_h > y_end) {
                 break;
             }
             continue;
@@ -360,10 +443,12 @@ static int draw_text_utf8_wrapped(const struct device *display,
             }
         }
 
-        if (cursor_x + ZPIX_GLYPH_W > x_end) {
+        const uint32_t advance_px = glyph_advance_px(codepoint, glyph);
+
+        if (cursor_x + glyph_w > x_end) {
             cursor_x = x;
             cursor_y += line_advance;
-            if (cursor_y + ZPIX_GLYPH_H > y_end) {
+            if (cursor_y + glyph_h > y_end) {
                 break;
             }
         }
@@ -373,7 +458,7 @@ static int draw_text_utf8_wrapped(const struct device *display,
             return ret;
         }
 
-        cursor_x += ZPIX_GLYPH_W;
+        cursor_x += advance_px;
         if (cursor_x + char_spacing < x_end) {
             cursor_x += char_spacing;
         }
@@ -398,14 +483,16 @@ static int draw_text_utf8_wrapped_image_bg(const struct device *display,
                                            const struct image_region *image,
                                            uint32_t *next_line_y)
 {
+    const uint32_t glyph_w = render_glyph_w;
+    const uint32_t glyph_h = render_glyph_h;
     const char *p = text;
-    const uint32_t line_advance = ZPIX_GLYPH_H + line_spacing;
+    const uint32_t line_advance = glyph_h + line_spacing;
     const uint32_t x_end = x + max_width;
     const uint32_t y_end = y + max_height;
     uint32_t cursor_x = x;
     uint32_t cursor_y = y;
 
-    if (text == NULL || image == NULL || max_width == 0U || max_height < ZPIX_GLYPH_H) {
+    if (text == NULL || image == NULL || max_width == 0U || max_height < glyph_h) {
         return -EINVAL;
     }
 
@@ -419,7 +506,7 @@ static int draw_text_utf8_wrapped_image_bg(const struct device *display,
         if (codepoint == '\n') {
             cursor_x = x;
             cursor_y += line_advance;
-            if (cursor_y + ZPIX_GLYPH_H > y_end) {
+            if (cursor_y + glyph_h > y_end) {
                 break;
             }
             continue;
@@ -433,10 +520,12 @@ static int draw_text_utf8_wrapped_image_bg(const struct device *display,
             }
         }
 
-        if (cursor_x + ZPIX_GLYPH_W > x_end) {
+        const uint32_t advance_px = glyph_advance_px(codepoint, glyph);
+
+        if (cursor_x + glyph_w > x_end) {
             cursor_x = x;
             cursor_y += line_advance;
-            if (cursor_y + ZPIX_GLYPH_H > y_end) {
+            if (cursor_y + glyph_h > y_end) {
                 break;
             }
         }
@@ -446,7 +535,7 @@ static int draw_text_utf8_wrapped_image_bg(const struct device *display,
             return ret;
         }
 
-        cursor_x += ZPIX_GLYPH_W;
+        cursor_x += advance_px;
         if (cursor_x + char_spacing < x_end) {
             cursor_x += char_spacing;
         }
@@ -535,6 +624,9 @@ int lcd_demo_common_run(const struct lcd_demo_profile *profile)
         return -EINVAL;
     }
 
+    render_glyph_w = profile_glyph_size_px(profile);
+    render_glyph_h = render_glyph_w;
+
     if (!device_is_ready(display)) {
         LOG_ERR("Display device is not ready");
         return -ENODEV;
@@ -570,6 +662,7 @@ int lcd_demo_common_run(const struct lcd_demo_profile *profile)
 
     const uint32_t char_spacing = profile_char_spacing(profile);
     const uint32_t line_spacing = profile_line_spacing(profile);
+    const uint32_t glyph_h = render_glyph_h;
     const uint32_t counter_period = profile_counter_period_ms(profile);
     const uint16_t bg_color = profile_bg_color(profile);
     const char *title = profile_title_text(profile);
@@ -587,16 +680,16 @@ int lcd_demo_common_run(const struct lcd_demo_profile *profile)
             (profile->image_switch_period_ms == 0U) ? 2000U : profile->image_switch_period_ms;
         const uint32_t box_margin_x = 2U;
         const uint32_t box_margin_y = 2U;
-        const uint32_t counter_line_h = ZPIX_GLYPH_H + line_spacing;
-        const uint32_t text_box_h = MIN(height, (ZPIX_GLYPH_H * 4U) + (line_spacing * 3U) + (box_margin_y * 2U));
+        const uint32_t counter_line_h = glyph_h + line_spacing;
+        const uint32_t text_box_h = MIN(height, (glyph_h * 4U) + (line_spacing * 3U) + (box_margin_y * 2U));
         const uint32_t text_box_y = height - text_box_h;
         const uint32_t text_x = box_margin_x;
         const uint32_t text_y = text_box_y + box_margin_y;
         const uint32_t text_w = (width > box_margin_x * 2U) ? (width - box_margin_x * 2U) : width;
-        const uint32_t counter_y = (height > (box_margin_y + ZPIX_GLYPH_H)) ?
-                                   (height - box_margin_y - ZPIX_GLYPH_H) :
+        const uint32_t counter_y = (height > (box_margin_y + glyph_h)) ?
+                                   (height - box_margin_y - glyph_h) :
                                    text_y;
-        const uint32_t body_h = (counter_y > text_y + 1U) ? (counter_y - text_y - 1U) : ZPIX_GLYPH_H;
+        const uint32_t body_h = (counter_y > text_y + 1U) ? (counter_y - text_y - 1U) : glyph_h;
 
         if (profile->image_width == 0U || profile->image_height == 0U) {
             LOG_ERR("image dimensions cannot be zero");
@@ -668,10 +761,10 @@ int lcd_demo_common_run(const struct lcd_demo_profile *profile)
             bool show_primary = true;
             const uint32_t text_margin_x = 2U;
             const uint32_t text_w = (width > text_margin_x * 2U) ? (width - text_margin_x * 2U) : width;
-            const uint32_t line_advance = ZPIX_GLYPH_H + line_spacing;
-            const uint32_t subtitle_h = (line_advance * 2U) + ZPIX_GLYPH_H;
+            const uint32_t line_advance = glyph_h + line_spacing;
+            const uint32_t subtitle_h = (line_advance * 2U) + glyph_h;
             const uint32_t counter_area_y = 4U;
-            const uint32_t counter_area_h = line_advance;
+            const uint32_t counter_area_h = line_advance * 2U;
             const uint32_t frame_ms = (profile->subtitle_frame_ms == 0U) ? 80U : profile->subtitle_frame_ms;
             uint32_t counter_elapsed_ms = 0U;
             int32_t subtitle_y = (int32_t)(height / 3U);
@@ -873,7 +966,7 @@ int lcd_demo_common_run(const struct lcd_demo_profile *profile)
 
     const uint32_t margin = 2U;
     const uint32_t text_w = (width > margin * 2U) ? (width - margin * 2U) : width;
-    const uint32_t counter_line_h = ZPIX_GLYPH_H + line_spacing;
+    const uint32_t counter_line_h = glyph_h + line_spacing;
     const uint32_t header_h = MIN(height / 3U, 96U);
     const uint32_t bars_y = MIN(height, header_h + counter_line_h + 2U);
 
@@ -893,12 +986,12 @@ int lcd_demo_common_run(const struct lcd_demo_profile *profile)
         return ret;
     }
 
-    const uint32_t subtitle_y = MIN(next_y, margin + header_h - ZPIX_GLYPH_H);
+    const uint32_t subtitle_y = MIN(next_y, margin + header_h - glyph_h);
     ret = draw_text_utf8_wrapped(display,
                                  margin,
                                  subtitle_y,
                                  text_w,
-                                 (margin + header_h > subtitle_y) ? ((margin + header_h) - subtitle_y) : ZPIX_GLYPH_H,
+                                 (margin + header_h > subtitle_y) ? ((margin + header_h) - subtitle_y) : glyph_h,
                                  profile_subtitle_color(profile),
                                  bg_color,
                                  subtitle,

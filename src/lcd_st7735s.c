@@ -23,6 +23,7 @@ static const struct lcd_demo_profile st7735s_profile = {
     .counter_period_ms = 400U,
     .char_spacing = 1U,
     .line_spacing = 2U,
+    .glyph_size_px = 12U,
     .image_data = src_image_1_128x160_rgb565,
     .image_width = 128U,
     .image_height = 160U,
@@ -35,7 +36,7 @@ static const struct lcd_demo_profile st7735s_profile = {
     .startup_white_hold_ms = ST7735S_STARTUP_WHITE_MS,
     .subtitle_frame_ms = ST7735S_SUBTITLE_FRAME_MS,
     .subtitle_step_px = ST7735S_SUBTITLE_STEP_PX,
-    .image_slideshow_only = 0U,
+    .image_slideshow_only = 1U,
 };
 
 int lcd_st7735s_demo_run(void)

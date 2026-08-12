@@ -21,6 +21,7 @@ struct lcd_demo_profile {
     uint32_t counter_period_ms;
     uint8_t char_spacing;
     uint8_t line_spacing;
+    uint8_t glyph_size_px;
 
     /* Primary image payload (RGB565 big-endian byte stream). */
     const uint8_t *image_data;
