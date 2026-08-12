@@ -1,7 +1,7 @@
 #include "lcd_st7735s.h"
 #include "lcd_demo_common.h"
-#include "image_1_128x160_rgb565.h"
-#include "image_2_128x160_rgb565.h"
+#include "img/image_1_128x160_rgb565.h"
+#include "img/image_2_128x160_rgb565.h"
 
 enum {
     ST7735S_SWITCH_PERIOD_MS = 2000,

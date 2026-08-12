@@ -1,7 +1,7 @@
 #include "lcd_st7789.h"
 #include "lcd_demo_common.h"
-#include "image_1_240x320_rgb565.h"
-#include "image_2_240x320_rgb565.h"
+#include "img/image_1_240x320_rgb565.h"
+#include "img/image_2_240x320_rgb565.h"
 
 enum {
     ST7789_SWITCH_PERIOD_MS = 2000,

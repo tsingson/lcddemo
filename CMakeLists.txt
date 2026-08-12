@@ -44,10 +44,10 @@ target_compile_definitions(app PRIVATE
 )
 
 target_sources(app PRIVATE
-    src/image_1_128x160_rgb565.c
-    src/image_1_240x320_rgb565.c
-    src/image_2_128x160_rgb565.c
-    src/image_2_240x320_rgb565.c
+    src/img/image_1_128x160_rgb565.c
+    src/img/image_1_240x320_rgb565.c
+    src/img/image_2_128x160_rgb565.c
+    src/img/image_2_240x320_rgb565.c
     src/lcd_demo_common.c
     src/lcd_st7735s.c
     src/lcd_st7789.c
