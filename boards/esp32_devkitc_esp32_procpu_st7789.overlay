@@ -38,7 +38,7 @@
             gctrl = <0x56>;
             vrhs = <0x1f>;
             vdvs = <0x20>;
-            mdac = <0x00>;
+            mdac = <0xc0>;
             gamma = <0x01>;
             colmod = <0x55>;
             lcm = <0x2c>;

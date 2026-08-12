@@ -11,11 +11,6 @@
 #include <zephyr/sys/printk.h>
 #include <zephyr/sys/util.h>
 
-#if APP_ENABLE_LVGL_DEMO && defined(CONFIG_LVGL)
-#include <lvgl.h>
-#include <lvgl_zephyr.h>
-#endif
-
 #include "lcd_demo_common.h"
 #include "zpix12_font_data.h"
 
@@ -519,373 +514,6 @@ static int restore_region_from_image(const struct device *display,
     return 0;
 }
 
-#if APP_ENABLE_LVGL_DEMO && defined(CONFIG_LVGL)
-struct lvgl_demo_ctx {
-    lv_obj_t *image;
-    lv_obj_t *marquee_box;
-    lv_obj_t *marquee_label;
-    lv_obj_t *counter_label;
-    lv_obj_t *heartbeat_dot;
-    lv_image_dsc_t image_dsc_primary;
-    lv_image_dsc_t image_dsc_alt;
-    bool has_alt_image;
-    bool show_primary;
-    int32_t marquee_y;
-    int32_t marquee_step;
-    int32_t marquee_min_y;
-    int32_t marquee_max_y;
-    uint32_t marquee_frames;
-    uint32_t slideshow_switches;
-    uint32_t counter;
-    bool dot_on;
-};
-
-static void lvgl_apply_image_src(struct lvgl_demo_ctx *ctx)
-{
-    if (ctx == NULL || ctx->image == NULL) {
-        return;
-    }
-
-    const lv_image_dsc_t *src = &ctx->image_dsc_primary;
-
-    if (ctx->has_alt_image && !ctx->show_primary) {
-        src = &ctx->image_dsc_alt;
-    }
-
-    lv_image_set_src(ctx->image, src);
-    lv_obj_invalidate(ctx->image);
-}
-
-static int run_lvgl_demo(const struct lcd_demo_profile *profile)
-{
-    const struct device *display_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
-    lv_obj_t *scr;
-    lv_obj_t *label_box;
-    lv_obj_t *marquee_label;
-    lv_obj_t *image;
-    lv_obj_t *counter_label;
-    lv_obj_t *heartbeat_dot;
-    lv_display_t *lv_disp;
-    uint32_t image_size_primary;
-    uint32_t image_size_alt = 0U;
-    bool st7735_profile;
-    bool image_only_mode;
-    uint32_t switch_period_ms;
-    int32_t box_h;
-    int32_t scr_h;
-    char text_mix[TEXT_MIX_BUF_LEN];
-    uint32_t sleep_ms;
-    uint32_t now_ms;
-    uint32_t last_counter_ms;
-    uint32_t last_slide_ms;
-    uint32_t last_full_refresh_ms;
-    static struct lvgl_demo_ctx ctx;
-    ARG_UNUSED(profile);
-
-    if (!device_is_ready(display_dev)) {
-        LOG_ERR("Display device is not ready for LVGL path");
-        return -ENODEV;
-    }
-
-    LOG_INF("LVGL_MODE_CONFIRMED: entering LVGL demo path");
-
-    if (profile->image_data == NULL || profile->image_width == 0U || profile->image_height == 0U) {
-        LOG_ERR("LVGL slideshow needs valid primary image data");
-        return -EINVAL;
-    }
-
-    image_size_primary = profile->image_width * profile->image_height * 2U;
-    if (profile->image_buf_size < image_size_primary) {
-        LOG_ERR("LVGL primary image size mismatch");
-        return -EINVAL;
-    }
-
-    st7735_profile = (profile->image_width == 128U) && (profile->image_height == 160U);
-    image_only_mode = (profile->image_slideshow_only != 0U);
-
-    (void)memset(&ctx, 0, sizeof(ctx));
-
-    ctx.has_alt_image = (profile->image_data_alt != NULL) &&
-                        (profile->image_alt_width == profile->image_width) &&
-                        (profile->image_alt_height == profile->image_height);
-    if (ctx.has_alt_image) {
-        image_size_alt = profile->image_alt_width * profile->image_alt_height * 2U;
-        if (profile->image_alt_buf_size < image_size_alt) {
-            LOG_WRN("LVGL alt image size mismatch, disable slideshow rotation");
-            ctx.has_alt_image = false;
-        }
-    }
-
-    switch_period_ms = (profile->image_switch_period_ms == 0U) ? 2000U : profile->image_switch_period_ms;
-
-    lvgl_lock();
-
-    /* LVGL display object is created by Zephyr LVGL glue when CONFIG_LVGL is enabled. */
-    lv_disp = lv_display_get_default();
-    if (lv_disp == NULL) {
-        lv_disp = lv_display_get_next(NULL);
-        if (lv_disp != NULL) {
-            lv_display_set_default(lv_disp);
-            LOG_WRN("LVGL default display was NULL, fallback display bound as default");
-        }
-    }
-
-    if (lv_disp == NULL) {
-        LOG_ERR("LVGL display is NULL (no registered display)");
-        lvgl_unlock();
-        return -ENODEV;
-    }
-
-    LOG_INF("LVGL default display is ready");
-
-#ifndef CONFIG_LV_Z_RUN_LVGL_ON_WORKQUEUE
-    (void)lv_timer_handler();
-#endif
-
-    scr = lv_screen_active();
-    if (scr == NULL) {
-        LOG_ERR("LVGL active screen is NULL");
-        lvgl_unlock();
-        return -ENODEV;
-    }
-
-    lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(scr, lv_color_hex(0x000000), 0);
-
-    ctx.image_dsc_primary.header.w = profile->image_width;
-    ctx.image_dsc_primary.header.h = profile->image_height;
-    ctx.image_dsc_primary.header.cf = LV_COLOR_FORMAT_RGB565;
-    ctx.image_dsc_primary.header.stride = profile->image_width * 2U;
-#ifdef LV_IMAGE_HEADER_MAGIC
-    ctx.image_dsc_primary.header.magic = LV_IMAGE_HEADER_MAGIC;
-#endif
-#ifdef LV_IMAGE_FLAGS_NONE
-    ctx.image_dsc_primary.header.flags = LV_IMAGE_FLAGS_NONE;
-#endif
-    ctx.image_dsc_primary.data_size = image_size_primary;
-    ctx.image_dsc_primary.data = profile->image_data;
-
-    if (ctx.has_alt_image) {
-        ctx.image_dsc_alt.header.w = profile->image_alt_width;
-        ctx.image_dsc_alt.header.h = profile->image_alt_height;
-        ctx.image_dsc_alt.header.cf = LV_COLOR_FORMAT_RGB565;
-        ctx.image_dsc_alt.header.stride = profile->image_alt_width * 2U;
-    #ifdef LV_IMAGE_HEADER_MAGIC
-        ctx.image_dsc_alt.header.magic = LV_IMAGE_HEADER_MAGIC;
-    #endif
-    #ifdef LV_IMAGE_FLAGS_NONE
-        ctx.image_dsc_alt.header.flags = LV_IMAGE_FLAGS_NONE;
-    #endif
-        ctx.image_dsc_alt.data_size = image_size_alt;
-        ctx.image_dsc_alt.data = profile->image_data_alt;
-    }
-
-    image = lv_image_create(scr);
-    if (image == NULL) {
-        LOG_ERR("LVGL image create failed");
-        lvgl_unlock();
-        return -ENOMEM;
-    }
-
-    ctx.image = image;
-    ctx.show_primary = true;
-    lv_image_set_src(ctx.image, &ctx.image_dsc_primary);
-    lv_obj_align(ctx.image, LV_ALIGN_LEFT_MID, 0, 0);
-
-    lvgl_apply_image_src(&ctx);
-
-    if (!image_only_mode) {
-        label_box = lv_obj_create(scr);
-        lv_obj_remove_style_all(label_box);
-        lv_obj_set_size(label_box, lv_pct(95), lv_pct(28));
-        lv_obj_align(label_box, LV_ALIGN_BOTTOM_MID, 0, -6);
-        lv_obj_set_style_bg_opa(label_box, LV_OPA_COVER, 0);
-        lv_obj_set_style_bg_color(label_box, lv_color_hex(0x000000), 0);
-        lv_obj_set_style_radius(label_box, 6, 0);
-
-        marquee_label = lv_label_create(label_box);
-        lv_obj_set_width(marquee_label, lv_pct(100));
-        if (st7735_profile) {
-            lv_label_set_long_mode(marquee_label, LV_LABEL_LONG_CLIP);
-        } else {
-            lv_label_set_long_mode(marquee_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
-        }
-        snprintk(text_mix,
-                 sizeof(text_mix),
-                 "%s   |   %s",
-                 profile_title_text(profile),
-                 profile_subtitle_text(profile));
-        lv_label_set_text(marquee_label, text_mix);
-        lv_obj_set_style_text_color(marquee_label, lv_color_hex(0xFFFFFF), 0);
-        lv_obj_set_style_text_font(marquee_label, LV_FONT_DEFAULT, 0);
-        lv_obj_align(marquee_label, LV_ALIGN_TOP_MID, 0, 0);
-
-        counter_label = lv_label_create(scr);
-        lv_label_set_text(counter_label, "Count: 0");
-        lv_obj_set_style_text_color(counter_label, lv_color_hex(0xFFFFFF), 0);
-        lv_obj_set_style_text_opa(counter_label, LV_OPA_COVER, 0);
-#if defined(CONFIG_LV_FONT_UNSCII_16)
-        lv_obj_set_style_text_font(counter_label, &lv_font_unscii_16, 0);
-#else
-        lv_obj_set_style_text_font(counter_label, LV_FONT_DEFAULT, 0);
-#endif
-        lv_obj_set_style_bg_opa(counter_label, LV_OPA_COVER, 0);
-        lv_obj_set_style_bg_color(counter_label, lv_color_hex(0x000000), 0);
-        lv_obj_set_style_pad_left(counter_label, 4, 0);
-        lv_obj_set_style_pad_right(counter_label, 4, 0);
-        lv_obj_set_style_pad_top(counter_label, 2, 0);
-        lv_obj_set_style_pad_bottom(counter_label, 2, 0);
-        lv_obj_set_style_radius(counter_label, 3, 0);
-        lv_obj_align(counter_label, LV_ALIGN_TOP_LEFT, 6, 4);
-
-        heartbeat_dot = lv_obj_create(scr);
-        if (heartbeat_dot != NULL) {
-            lv_obj_del(heartbeat_dot);
-            heartbeat_dot = NULL;
-        }
-
-        /* Set stable layering once: images behind, overlays always above. */
-        lv_obj_move_background(ctx.image);
-        lv_obj_move_foreground(label_box);
-        lv_obj_move_foreground(counter_label);
-        if (heartbeat_dot != NULL) {
-            lv_obj_move_foreground(heartbeat_dot);
-        }
-
-        lv_obj_update_layout(scr);
-        box_h = (int32_t)lv_obj_get_height(label_box);
-        scr_h = (int32_t)lv_obj_get_height(scr);
-
-        ctx.marquee_box = label_box;
-        ctx.marquee_label = marquee_label;
-        ctx.counter_label = counter_label;
-        ctx.heartbeat_dot = heartbeat_dot;
-        ctx.marquee_min_y = MAX(6, scr_h / 4);
-        ctx.marquee_max_y = MAX(ctx.marquee_min_y, scr_h - box_h - 6);
-        ctx.marquee_y = ctx.marquee_max_y;
-        ctx.marquee_step = 0;
-        ctx.marquee_frames = 0U;
-        ctx.slideshow_switches = 0U;
-        ctx.counter = 0U;
-        ctx.dot_on = false;
-
-        lv_obj_set_y(label_box, ctx.marquee_y);
-    } else {
-        lv_obj_move_background(ctx.image);
-        ctx.marquee_box = NULL;
-        ctx.marquee_label = NULL;
-        ctx.counter_label = NULL;
-        ctx.heartbeat_dot = NULL;
-        ctx.marquee_min_y = 0;
-        ctx.marquee_max_y = 0;
-        ctx.marquee_y = 0;
-        ctx.marquee_step = 0;
-        ctx.marquee_frames = 0U;
-        ctx.slideshow_switches = 0U;
-        ctx.counter = 0U;
-        ctx.dot_on = false;
-        LOG_INF("LVGL image-only debug mode enabled: text/counter disabled");
-    }
-
-    LOG_INF("LVGL demo UI created");
-    LOG_INF("LVGL scheduler active");
-    if (ctx.has_alt_image) {
-        LOG_INF("LVGL slideshow active: %u ms/image", switch_period_ms);
-    } else {
-        LOG_WRN("LVGL slideshow fallback: only one image available");
-    }
-    if (!st7735_profile) {
-        LOG_INF("LVGL profile isolation: ST7789/other path uses standard refresh behavior");
-    }
-    if (!image_only_mode) {
-        LOG_INF("LVGL heartbeat dot disabled");
-        LOG_INF("LVGL marquee active: native circular scroll");
-    }
-    lv_refr_now(NULL);
-    LOG_INF("LVGL refresh requested");
-    LOG_INF("LVGL_MODE_CONFIRMED: UI active and refresh requested");
-
-    if (display_blanking_off(display_dev) < 0) {
-        LOG_WRN("display_blanking_off failed on LVGL path");
-    }
-
-    lvgl_unlock();
-
-    now_ms = k_uptime_get_32();
-    last_counter_ms = now_ms;
-    last_slide_ms = now_ms;
-    last_full_refresh_ms = now_ms;
-
-    uint32_t tick = 0U;
-    while (1) {
-#ifndef CONFIG_LV_Z_RUN_LVGL_ON_WORKQUEUE
-        /* Match Zephyr LVGL sample pattern: lock around handler. */
-        lvgl_lock();
-
-        now_ms = k_uptime_get_32();
-        if ((uint32_t)(now_ms - last_counter_ms) >= 500U) {
-            last_counter_ms = now_ms;
-            if (!image_only_mode && ctx.counter_label != NULL) {
-                ++ctx.counter;
-                lv_label_set_text_fmt(ctx.counter_label, "Count: %lu", (unsigned long)ctx.counter);
-
-                if (st7735_profile) {
-                    lv_obj_invalidate(scr);
-                    lv_refr_now(NULL);
-                }
-
-                ctx.dot_on = !ctx.dot_on;
-                if (ctx.heartbeat_dot != NULL) {
-                    lv_obj_set_style_bg_color(ctx.heartbeat_dot,
-                                              lv_color_hex(ctx.dot_on ? 0xFF3B30 : 0x1E90FF),
-                                              0);
-                }
-
-                if ((ctx.counter % 2U) == 0U) {
-                    LOG_INF("LVGL timer ticks: %lu", (unsigned long)ctx.counter);
-                }
-            }
-        }
-
-        if (ctx.has_alt_image && (uint32_t)(now_ms - last_slide_ms) >= switch_period_ms) {
-            last_slide_ms = now_ms;
-            ctx.show_primary = !ctx.show_primary;
-            LOG_INF("LVGL slideshow switch begin: target=%s",
-                ctx.show_primary ? "primary" : "alt");
-            lvgl_apply_image_src(&ctx);
-            if (st7735_profile) {
-                /* Work around partial refresh artifacts on ST7735S by forcing full redraw. */
-                lv_obj_invalidate(scr);
-                lv_refr_now(NULL);
-            }
-            ++ctx.slideshow_switches;
-            LOG_INF("LVGL slideshow switch done: %lu (%s)",
-                    (unsigned long)ctx.slideshow_switches,
-                    ctx.show_primary ? "primary" : "alt");
-        }
-
-        if (st7735_profile && (uint32_t)(now_ms - last_full_refresh_ms) >= 1000U) {
-            last_full_refresh_ms = now_ms;
-            lv_obj_invalidate(scr);
-        }
-
-        sleep_ms = lv_timer_handler();
-        lvgl_unlock();
-#else
-        sleep_ms = 10U;
-#endif
-
-        if ((tick % 250U) == 0U) {
-            LOG_INF("LVGL_MODE_CONFIRMED: loop alive tick=%u", tick);
-        }
-        ++tick;
-        k_msleep(MAX(1U, MIN(sleep_ms, 20U)));
-    }
-
-    return 0;
-}
-#endif
-
 int lcd_demo_common_run(const struct lcd_demo_profile *profile)
 {
     const struct device *display = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
@@ -914,21 +542,6 @@ int lcd_demo_common_run(const struct lcd_demo_profile *profile)
 
     display_get_capabilities(display, &caps);
     LOG_INF("%s demo: %ux%u", profile->panel_name, caps.x_resolution, caps.y_resolution);
-
-#if APP_ENABLE_LVGL_DEMO && defined(CONFIG_LVGL)
-    /* Dedicated LVGL branch: avoid direct pre-LVGL writes that can interfere with glue init. */
-    ret = run_lvgl_demo(profile);
-    if (ret == 0) {
-        return 0;
-    }
-
-#if APP_ENTRY_ST7735S_LVGL
-    LOG_ERR("ST7735S LVGL entry is strict mode: LVGL path failed (%d)", ret);
-    return ret;
-#endif
-
-    LOG_WRN("LVGL path unavailable (%d), fallback to software renderer", ret);
-#endif
 
     ret = display_set_pixel_format(display, PIXEL_FORMAT_RGB_565);
     if (ret != 0) {
@@ -1057,10 +670,13 @@ int lcd_demo_common_run(const struct lcd_demo_profile *profile)
             const uint32_t text_w = (width > text_margin_x * 2U) ? (width - text_margin_x * 2U) : width;
             const uint32_t line_advance = ZPIX_GLYPH_H + line_spacing;
             const uint32_t subtitle_h = (line_advance * 2U) + ZPIX_GLYPH_H;
+            const uint32_t counter_area_y = 4U;
+            const uint32_t counter_area_h = line_advance;
             const uint32_t frame_ms = (profile->subtitle_frame_ms == 0U) ? 80U : profile->subtitle_frame_ms;
+            uint32_t counter_elapsed_ms = 0U;
             int32_t subtitle_y = (int32_t)(height / 3U);
             int32_t subtitle_step = (profile->subtitle_step_px == 0U) ? 2 : (int32_t)profile->subtitle_step_px;
-            int32_t min_y = 4;
+            int32_t min_y = (int32_t)(counter_area_y + counter_area_h + 2U);
             int32_t max_y = (int32_t)height - (int32_t)subtitle_h - 4;
             int32_t prev_subtitle_y = -1;
 
@@ -1075,6 +691,8 @@ int lcd_demo_common_run(const struct lcd_demo_profile *profile)
                      "%s\n%s",
                      profile_title_text(profile),
                      profile_subtitle_text(profile));
+
+            LOG_INF("Software slideshow mode: vertical subtitle enabled");
 
             while (1) {
                 const struct image_region *active_image = &image;
@@ -1116,6 +734,17 @@ int lcd_demo_common_run(const struct lcd_demo_profile *profile)
                         }
                     }
 
+                    ret = restore_region_from_image(display,
+                                                    0U,
+                                                    counter_area_y,
+                                                    width,
+                                                    counter_area_h,
+                                                    active_image);
+                    if (ret != 0) {
+                        LOG_ERR("restore slideshow counter failed: %d", ret);
+                        return ret;
+                    }
+
                     ret = draw_text_utf8_wrapped_image_bg(display,
                                                           text_margin_x,
                                                           (uint32_t)subtitle_y,
@@ -1132,19 +761,48 @@ int lcd_demo_common_run(const struct lcd_demo_profile *profile)
                         return ret;
                     }
 
+                    snprintk(counter_text,
+                             sizeof(counter_text),
+                             "%s %lu",
+                             counter_prefix,
+                             (unsigned long)counter);
+                    ret = draw_text_utf8_wrapped_image_bg(display,
+                                                          text_margin_x,
+                                                          counter_area_y,
+                                                          text_w,
+                                                          counter_area_h,
+                                                          0x0000U,
+                                                          counter_text,
+                                                          char_spacing,
+                                                          line_spacing,
+                                                          active_image,
+                                                          NULL);
+                    if (ret != 0) {
+                        LOG_ERR("draw slideshow counter failed: %d", ret);
+                        return ret;
+                    }
+
                     prev_subtitle_y = subtitle_y;
                     subtitle_y += subtitle_step;
                     /* Bounce between top and bottom limits for vertical marquee motion. */
                     if (subtitle_y <= min_y) {
                         subtitle_y = min_y;
                         subtitle_step = -subtitle_step;
+                        LOG_INF("Subtitle bounce: top y=%d", subtitle_y);
                     } else if (subtitle_y >= max_y) {
                         subtitle_y = max_y;
                         subtitle_step = -subtitle_step;
+                        LOG_INF("Subtitle bounce: bottom y=%d", subtitle_y);
                     }
 
                     k_msleep(frame_ms);
                     elapsed_ms += frame_ms;
+                    counter_elapsed_ms += frame_ms;
+
+                    while (counter_elapsed_ms >= counter_period) {
+                        counter_elapsed_ms -= counter_period;
+                        ++counter;
+                    }
                 }
             }
         }

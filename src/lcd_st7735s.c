@@ -35,7 +35,7 @@ static const struct lcd_demo_profile st7735s_profile = {
     .startup_white_hold_ms = ST7735S_STARTUP_WHITE_MS,
     .subtitle_frame_ms = ST7735S_SUBTITLE_FRAME_MS,
     .subtitle_step_px = ST7735S_SUBTITLE_STEP_PX,
-    .image_slideshow_only = 1U,
+    .image_slideshow_only = 0U,
 };
 
 int lcd_st7735s_demo_run(void)
